@@ -1,0 +1,98 @@
+name: "Docker Build & Push Action"
+description: "Builds a Docker image and pushes to a private registry with support for multiple tags"
+author: 'step-security'
+inputs:
+  image:
+    description: "Name of the Docker image"
+    required: true
+  tags:
+    description: "Tags override for Docker image"
+    required: false
+  appendMode:
+    description: "Append tags to auto-generated tags instead of replacing them"
+    required: false
+    default: "false"
+  registry:
+    description: "Target Docker registry"
+    required: true
+  dockerfile:
+    description: "Location of Dockerfile, if not Dockerfile in root directory"
+    required: false
+    default: "Dockerfile"
+  directory:
+    description: "Directory to run `docker build` from, if not project root"
+    required: false
+  buildArgs:
+    description: "Docker build arguments passed via --build-arg"
+    required: false
+  labels:
+    description: "Docker build labels passed via --label"
+    required: false
+  target:
+    description: "Docker build target passed via --target"
+    required: false
+  platform:
+    description: "Docker build platform passed via --platform"
+    required: false
+  ssh:
+    description: "Docker build ssh options passed via --ssh"
+    required: false
+  secrets:
+    description: "Docker build secrets passed via --secret (e.g. id=mysecret,src=secret.txt). Requires BuildKit."
+    required: false
+  username:
+    description: "Docker registry username"
+    required: false
+  password:
+    description: "Docker registry password"
+    required: false
+  gitHubOrg:
+    description: "GitHub organization to push image to (if not current)"
+    required: false
+  addLatest:
+    description: "Adds latest tag to auto-generated GitOps tag"
+    required: false
+    default: "false"
+  addTimestamp:
+    description: "Suffixes a build timestamp to the branch-based Docker tag"
+    required: false
+    default: "false"
+  enableBuildKit:
+    description: "Enables Docker BuildKit support"
+    required: false
+    default: "false"
+  cacheFrom:
+    description: "Docker cache source(s) passed via --cache-from. Accepts one entry per line for multiple sources (e.g. type=gha or type=registry,ref=myimage:cache)."
+    required: false
+  cacheTo:
+    description: "Docker cache destination(s) passed via --cache-to. Accepts one entry per line for multiple destinations (e.g. type=gha,mode=max)."
+    required: false
+  multiPlatform:
+    description: "Builds image with buildx to support multiple platforms"
+    required: false
+    default: "false"
+  overrideDriver:
+    description: "Disables setting up docker-container driver"
+    required: false
+    default: "false"
+  skipLogin:
+    description: "Skip the Docker login step, useful when credentials are pre-configured via a credential helper or OIDC"
+    required: false
+    default: "false"
+  pushImage:
+    description: "Flag for disabling the login & push steps, set to true by default"
+    required: false
+    default: "true"
+outputs:
+  imageFullName:
+    description: "Full name of the Docker image with registry prefix and tag suffix"
+  imageName:
+    description: "Name of the Docker image with owner prefix"
+  tags:
+    description: "Tags for the Docker image"
+runs:
+  using: "node24"
+  main: "dist/index.js"
+branding:
+  icon: "anchor"
+  color: "blue"
