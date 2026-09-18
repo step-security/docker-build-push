@@ -1,1 +1,327 @@
-# docker-build-push
+[![StepSecurity Maintained Action](https://raw.githubusercontent.com/step-security/maintained-actions-assets/main/assets/maintained-action-banner.png)](https://docs.stepsecurity.io/actions/stepsecurity-maintained-actions)
+
+# Docker Build & Push Action
+
+Builds a Docker image and pushes it to the private registry of your choosing.
+
+## Supported Docker registries
+
+- Docker Hub
+- Google Container Registry (GCR)
+- Google Artifact Registry (GAR)
+- AWS Elastic Container Registry (ECR)
+- Azure Container Registry (ACR)
+- GitHub Docker Registry
+- JFrog Artifactory
+
+## Features
+
+- [Auto-tagging with GitOps](#auto-tagging-with-gitops)
+- [BuildKit support](#buildkit-support)
+- [Multi-platform builds](#multi-platform-builds)
+
+
+## Basic usage
+
+- Ensure you run the [checkout action](https://github.com/actions/checkout) before using this action
+- Add the following to a workflow `.yml` file in the `/.github` directory of your repo
+
+```yaml
+steps:
+  - uses: actions/checkout@v7
+    name: Check out code
+
+  - uses: step-security/docker-build-push@v7
+    name: Build & push Docker image
+    with:
+      image: repo/image
+      tags: v1, latest
+      registry: registry-url.io
+      dockerfile: Dockerfile.ci
+      username: ${{ secrets.DOCKER_USERNAME }}
+      password: ${{ secrets.DOCKER_PASSWORD }}
+```
+
+## Inputs
+
+| Name           | Description                                                                                              | Required | Type    |
+|----------------|----------------------------------------------------------------------------------------------------------|----------|---------|
+| image          | Docker image name                                                                                        | Yes      | String  |
+| tags           | Comma separated docker image tags (see [Auto-tagging with GitOps](#auto-tagging-with-gitops))            | No       | List    |
+| appendMode     | Append tags to auto-generated GitOps tags instead of replacing them                                      | No       | Boolean |
+| addLatest      | Adds the `latest` tag to the GitOps-generated tags                                                       | No       | Boolean |
+| addTimestamp   | Suffixes a build timestamp to the branch-based Docker tag                                                | No       | Boolean |
+| registry       | Docker registry host                                                                                     | Yes      | String  |
+| dockerfile     | Location of Dockerfile (defaults to `Dockerfile`)                                                        | No       | String  |
+| directory      | Directory to pass to `docker build` command, if not project root                                         | No       | String  |
+| buildArgs      | Docker build arguments passed via `--build-arg`                                                          | No       | List    |
+| labels         | Docker build labels passed via `--label`                                                                 | No       | List    |
+| target         | Docker build target passed via `--target`                                                                | No       | String  |
+| platform       | Docker build platform passed via `--platform`                                                            | No       | String  |
+| secrets        | Docker build secrets passed via `--secret` (e.g. `id=mysecret,src=secret.txt`). Requires BuildKit.      | No       | List    |
+| username       | Docker registry username                                                                                 | No       | String  |
+| password       | Docker registry password or token                                                                        | No       | String  |
+| githubOrg      | GitHub organization to push image to (if not current)                                                    | No       | String  |
+| enableBuildKit | Enables Docker BuildKit support                                                                          | No       | Boolean |
+| cacheFrom      | Docker cache source(s) passed via `--cache-from`. Newline-separated for multiple sources (e.g. `type=gha` or `type=registry,ref=myimage:cache`). Requires `enableBuildKit: true` for advanced cache types.    | No       | List    |
+| cacheTo        | Docker cache destination(s) passed via `--cache-to`. Newline-separated for multiple destinations (e.g. `type=gha,mode=max`). Requires `enableBuildKit: true`.                              | No       | List    |
+| multiPlatform  | Enables Docker buildx support                                                                            | No       | Boolean |
+| overrideDriver | Disables setting up docker-container driver (if `true`, alternative docker driver must be set up)        | No       | Boolean |
+| skipLogin      | Skip the Docker login step, useful when credentials are pre-configured via a credential helper or OIDC   | No       | Boolean |
+| pushImage      | Flag for disabling the push step, set to `true` by default                                               | No       | Boolean |
+
+## Outputs
+
+| Name          | Description                                        | Format                 |
+|---------------|----------------------------------------------------|------------------------|
+| imageFullName | Full name of the Docker image with registry prefix | `registry/owner/image` |
+| imageName     | Name of the Docker image with owner prefix         | `owner/image`          |
+| tags          | Tags for the Docker image                          | `v1,latest`            |
+
+## Storing secrets
+
+It is strongly recommended that you store all Docker credentials as GitHub [encrypted secrets](https://docs.github.com/en/actions/security-guides/encrypted-secrets). Secrets can be referenced in workflow files using the syntax `${{ secrets.SECRET_NAME }}`.
+
+There is a distinction between secrets at the [repository](https://docs.github.com/en/actions/security-guides/encrypted-secrets#creating-encrypted-secrets-for-a-repository), [environment](https://docs.github.com/en/actions/security-guides/encrypted-secrets#creating-encrypted-secrets-for-an-environment) and [organization](https://docs.github.com/en/actions/security-guides/encrypted-secrets#creating-encrypted-secrets-for-an-organization) level. In general, you should store secrets at the repository or organization level, depending on your security posture. It is only recommended that you utilize environment-level secrets if your Docker credentials differ per environment (dev, staging, etc.).
+
+## Examples
+
+### Docker Hub
+
+- Save your Docker Hub username (`DOCKER_USERNAME`) and password (`DOCKER_PASSWORD`) as secrets in your GitHub repo
+- Modify sample below and include in your workflow `.github/workflows/*.yml` file
+
+```yaml
+uses: step-security/docker-build-push@v7
+with:
+  image: docker-hub-repo/image-name
+  registry: docker.io
+  username: ${{ secrets.DOCKER_USERNAME }}
+  password: ${{ secrets.DOCKER_PASSWORD }}
+```
+
+### Google Container Registry (GCR)
+
+- Create a service account with the ability to push to GCR (see [configuring access control](https://cloud.google.com/container-registry/docs/access-control))
+- Create and download JSON key for new service account
+- Save content of `.json` file as a secret called `DOCKER_PASSWORD` in your GitHub repo
+- Modify sample below and include in your workflow `.github/workflows/*.yml` file
+- Ensure you set the username to `_json_key`
+
+```yaml
+uses: step-security/docker-build-push@v7
+with:
+  image: gcp-project/image-name
+  registry: gcr.io
+  username: _json_key
+  password: ${{ secrets.DOCKER_PASSWORD }}
+```
+
+### Google Artifact Registry (GAR)
+
+- Create a Docker repository in GAR (see [quickstart](https://cloud.google.com/artifact-registry/docs/docker/pushing-and-pulling))
+- Create a service account with the **Artifact Registry Writer** role (`roles/artifactregistry.writer`)
+- Create and download a JSON key for the service account (**IAM & Admin → Service Accounts → Keys → Add Key → JSON**)
+- Save the following as secrets in your GitHub repo:
+  - `GAR_REGISTRY`: your registry host, e.g. `us-west1-docker.pkg.dev`
+  - `GAR_PASSWORD`: the full contents of the downloaded JSON key file
+- Modify sample below and include in your workflow `.github/workflows/*.yml` file
+- Set the username to `_json_key` when authenticating with a JSON key
+
+```yaml
+uses: step-security/docker-build-push@v7
+with:
+  image: project-id/repository/image-name
+  registry: ${{ secrets.GAR_REGISTRY }}
+  username: _json_key
+  password: ${{ secrets.GAR_PASSWORD }}
+```
+
+### AWS Elastic Container Registry (ECR)
+
+- Create an IAM user with the ability to push to ECR (see [example policies](https://docs.aws.amazon.com/AmazonECR/latest/userguide/ecr_managed_policies.html))
+- Create and download access keys
+- Save `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` as secrets in your GitHub repo
+- Ensure the repo you are trying to push to already exists, if not create with `aws ecr create-repository` before pushing
+- Modify sample below and include in your workflow `.github/workflows/*.yml` file
+
+```yaml
+uses: step-security/docker-build-push@v7
+with:
+  image: image-name
+  registry: [aws-account-number].dkr.ecr.[region].amazonaws.com
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+```
+
+### Azure Container Registry (ACR)
+
+- Create an Azure Container Registry (see [quickstart](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-get-started-portal))
+- Enable the **Admin user** under your registry's **Settings → Access keys**
+- Save the following as secrets in your GitHub repo:
+  - `ACR_REGISTRY`: your login server, e.g. `yourname.azurecr.io`
+  - `ACR_USERNAME`: the admin username (same as registry name)
+  - `ACR_PASSWORD`: one of the generated passwords
+- Modify sample below and include in your workflow `.github/workflows/*.yml` file
+
+```yaml
+uses: step-security/docker-build-push@v7
+with:
+  image: image-name
+  registry: ${{ secrets.ACR_REGISTRY }}
+  username: ${{ secrets.ACR_USERNAME }}
+  password: ${{ secrets.ACR_PASSWORD }}
+```
+
+### GitHub Container Registry
+
+- GitHub recently [migrated their container registry](https://docs.github.com/en/packages/guides/migrating-to-github-container-registry-for-docker-images) from docker.pkg.github.com to ghcr.io
+- It is assumed you'll be pushing the image to a repo inside your GitHub organization, unless you set `githubOrg`
+- If using ghcr.io, provide the image name in `ghcr.io/OWNER/IMAGE_NAME` format
+- If using docker.pkg.github.com, provide the image name in `docker.pkg.github.com/OWNER/REPOSITORY/IMAGE_NAME` format
+- Provide either the `${{ github.actor }}` or an alternate username for Docker login (with associated token below)
+- Pass the default GitHub Actions token or custom secret with [proper push permissions](https://docs.github.com/en/packages/guides/pushing-and-pulling-docker-images#authenticating-to-github-container-registry)
+
+#### New ghcr.io
+
+```yaml
+uses: step-security/docker-build-push@v7
+with:
+  image: image-name
+  registry: ghcr.io
+  githubOrg: override-org # optional
+  username: ${{ secrets.GHCR_USERNAME }}
+  password: ${{ secrets.GHCR_TOKEN }}
+```
+
+#### Legacy docker.pkg.github.com
+
+```yaml
+uses: step-security/docker-build-push@v7
+with:
+  image: github-repo/image-name
+  registry: docker.pkg.github.com
+  username: ${{ github.actor }}
+  password: ${{ secrets.GITHUB_TOKEN }}
+```
+
+### JFrog Artifactory
+
+- Create a Docker repository in Artifactory (see [getting started](https://jfrog.com/help/r/jfrog-artifactory-documentation/getting-started-with-artifactory-as-a-docker-registry))
+- Generate an [API key or identity token](https://jfrog.com/help/r/jfrog-platform-administration-documentation/user-profile) for authentication
+- Save the following as secrets in your GitHub repo:
+  - `JFROG_REGISTRY`: your Artifactory Docker registry host, e.g. `<instance>.jfrog.io` (cloud) or `<hostname>:<port>` (self-hosted)
+  - `JFROG_USERNAME`: your Artifactory username
+  - `JFROG_PASSWORD`: your Artifactory API key or identity token
+- The image path must include the repository name: `<docker-repo>/<image-name>`
+- Modify sample below and include in your workflow `.github/workflows/*.yml` file
+
+```yaml
+uses: step-security/docker-build-push@v7
+with:
+  image: docker-repo/image-name
+  registry: ${{ secrets.JFROG_REGISTRY }}
+  username: ${{ secrets.JFROG_USERNAME }}
+  password: ${{ secrets.JFROG_PASSWORD }}
+```
+
+---
+
+## Auto-tagging with GitOps
+
+By default, if you do not pass a `tags` input this action will use an algorithm based on the state of your git repo to determine the Docker image tag(s). This is designed to enable developers to more easily use GitOps in their CI/CD pipelines. Below is a table detailing how the GitHub trigger (branch or tag) determines the Docker tag(s).
+
+| Trigger                  | Commit SHA | addLatest | addTimestamp | Docker Tag(s)                          |
+|--------------------------|------------|-----------|--------------|----------------------------------------|
+| /refs/tags/v1.0          | N/A        | false     | N/A          | v1.0                                   |
+| /refs/tags/v1.0          | N/A        | true      | N/A          | v1.0,latest                            |
+| /refs/heads/dev          | 1234567    | false     | true         | dev-1234567-2021-09-01.195027          |
+| /refs/heads/dev          | 1234567    | true      | false        | dev-1234567,latest                     |
+| /refs/heads/main         | 1234567    | false     | true         | main-1234567-2021-09-01.195027         |
+| /refs/heads/main         | 1234567    | true      | false        | main-1234567,latest                    |
+| /refs/heads/SOME-feature | 1234567    | false     | true         | some-feature-1234567-2021-09-01.195027 |
+| /refs/heads/SOME-feature | 1234567    | true      | false        | some-feature-1234567,latest            |
+
+### Adding custom tags to GitOps tags
+
+The `appendMode` input allows you to add additional tags while keeping the auto-generated GitOps tags:
+
+```yaml
+uses: step-security/docker-build-push@v7
+with:
+  image: repo/image
+  registry: docker.io
+  tags: stable,production
+  appendMode: true
+  username: ${{ secrets.DOCKER_USERNAME }}
+  password: ${{ secrets.DOCKER_PASSWORD }}
+```
+
+For a `main` branch build with commit `1234567`, this would produce tags: `main-1234567,stable,production`
+
+## BuildKit support
+
+Enables [Docker BuildKit](https://docs.docker.com/build/buildkit/)
+
+> **Note:** BuildKit is required when using advanced cache types such as `type=gha` or `type=registry` with the `cacheFrom` and `cacheTo` inputs. Set `enableBuildKit: true` to avoid errors like `unknown flag: --cache-to`.
+
+```yaml
+steps:
+  - uses: actions/checkout@v7
+    name: Check out code
+
+  - uses: step-security/docker-build-push@v7
+    name: Build & push Docker image
+    with:
+      image: repo/image
+      registry: docker.io
+      enableBuildKit: true
+      username: ${{ secrets.DOCKER_USERNAME }}
+      password: ${{ secrets.DOCKER_PASSWORD }}
+```
+
+## Multi-platform builds
+
+Enables [multi-platform builds](https://docs.docker.com/build/building/multi-platform/) with the default [docker-container driver](https://docs.docker.com/build/drivers/docker-container/)
+
+```yaml
+steps:
+  - uses: actions/checkout@v7
+    name: Check out code
+
+  - uses: step-security/docker-build-push@v7
+    name: Build & push Docker image
+    with:
+      image: repo/image
+      registry: docker.io
+      multiPlatform: true
+      platform: linux/amd64,linux/arm64,linux/arm/v7
+      username: ${{ secrets.DOCKER_USERNAME }}
+      password: ${{ secrets.DOCKER_PASSWORD }}
+```
+
+Enables [multi-platform builds](https://docs.docker.com/build/building/multi-platform/) with custom driver
+
+```yaml
+steps:
+  - uses: actions/checkout@v7
+    name: Check out code
+
+  # Required when overrideDriver is set to true
+  - uses: step-security/setup-buildx-action@v4
+    name: Customize Docker driver
+    with:
+      driver-opts: image=moby/buildkit:v0.11.0
+
+  - uses: step-security/docker-build-push@v7
+    name: Build & push Docker image
+    with:
+      image: repo/image
+      registry: docker.io
+      multiPlatform: true
+      platform: linux/amd64,linux/arm64,linux/arm/v7
+      overrideDriver: true
+      username: ${{ secrets.DOCKER_USERNAME }}
+      password: ${{ secrets.DOCKER_PASSWORD }}
+```
